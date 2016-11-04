@@ -11,6 +11,7 @@ angular.module('conFusion.controllers', [])
 
     // Form data for the login modal
     $scope.loginData = {};
+    $scope.reservation = {};
 
     // Create the login modal that we will use later
     $ionicModal.fromTemplateUrl('templates/login.html', {
@@ -39,52 +40,140 @@ angular.module('conFusion.controllers', [])
         $scope.closeLogin();
       }, 1000);
     };
+
+    $ionicModal.fromTemplateUrl('templates/reserve.html', {
+      scope: $scope
+    }).then(function (model) {
+      $scope.reserveForm = model;
+    });
+
+    $scope.closeReserve = function () {
+      $scope.reserveForm.hide();
+    };
+
+    $scope.reserve = function () {
+      $scope.reserveForm.show();
+    };
+
+    $scope.doReserve = function () {
+      console.log('Doing reservation', $scope.reservation);
+
+      // Simulate a login delay. Remove this and replace with your login
+      // code if using a login system
+      $timeout(function () {
+        $scope.closeReserve();
+      }, 1000);
+    };
   })
 
-  .controller('MenuController', ['$scope', 'menuFactory', 'baseURL', function ($scope, menuFactory, baseURL) {
+  .controller('MenuController', ['$scope', 'menuFactory', 'favoriteFactory', 'baseURL', '$ionicListDelegate',
+    function ($scope, menuFactory, favoriteFactory, baseURL, $ionicListDelegate) {
 
-    $scope.baseURL = baseURL;
-    $scope.tab = 1;
-    $scope.filtText = '';
-    $scope.showDetails = false;
-    $scope.showMenu = false;
-    $scope.message = "Loading ...";
+      $scope.baseURL = baseURL;
+      $scope.tab = 1;
+      $scope.filtText = '';
+      $scope.showDetails = false;
+      $scope.showMenu = false;
+      $scope.message = "Loading ...";
 
-    menuFactory.getDishes().query(
-      function (response) {
-        $scope.dishes = response;
-        $scope.showMenu = true;
-      },
-      function (response) {
-        $scope.message = "Error: " + response.status + " " + response.statusText;
+      menuFactory.getDishes().query(
+        function (response) {
+          $scope.dishes = response;
+          $scope.showMenu = true;
+        },
+        function (response) {
+          $scope.message = "Error: " + response.status + " " + response.statusText;
+        });
+
+
+      $scope.select = function (setTab) {
+        $scope.tab = setTab;
+
+        if (setTab === 2) {
+          $scope.filtText = "appetizer";
+        }
+        else if (setTab === 3) {
+          $scope.filtText = "mains";
+        }
+        else if (setTab === 4) {
+          $scope.filtText = "dessert";
+        }
+        else {
+          $scope.filtText = "";
+        }
+      };
+
+      $scope.isSelected = function (checkTab) {
+        return ($scope.tab === checkTab);
+      };
+
+      $scope.toggleDetails = function () {
+        $scope.showDetails = !$scope.showDetails;
+      };
+
+      $scope.addFavorite = function (index) {
+        console.log("index is " + index);
+        favoriteFactory.addToFavorites(index);
+        $ionicListDelegate.closeOptionButtons();
+      }
+    }])
+
+  .controller('FavoriteController', ['$scope', 'menuFactory', 'favoriteFactory', 'baseURL',
+    '$ionicListDelegate', '$ionicPopup', '$ionicLoading', '$timeout',
+    function ($scope, menuFactory, favoriteFactory, baseURL, $ionicListDelegate,
+              $ionicPopup, $ionicLoading, $timeout) {
+      $scope.baseURL = baseURL;
+      $scope.shouldShowDelete = false;
+
+      $ionicLoading.show({
+        template: '<ion-spinner></ion-spinner> Loading...'
       });
 
+      $scope.favorites = favoriteFactory.getFavorites();
 
-    $scope.select = function (setTab) {
-      $scope.tab = setTab;
+      $scope.dishes = menuFactory.getDishes().query(
+        function (response) {
+          $scope.dishes = response;
+          $timeout(function () {
+            $ionicLoading.hide();
+          }, 1000);
+        },
+        function (response) {
+          $scope.message = "Error: " + response.status + " " + response.statusText;
+          $timeout(function () {
+            $ionicLoading.hide();
+          }, 1000);
+        }
+      );
 
-      if (setTab === 2) {
-        $scope.filtText = "appetizer";
-      }
-      else if (setTab === 3) {
-        $scope.filtText = "mains";
-      }
-      else if (setTab === 4) {
-        $scope.filtText = "dessert";
-      }
-      else {
-        $scope.filtText = "";
-      }
-    };
+      console.log($scope.dishes, $scope.favorites);
 
-    $scope.isSelected = function (checkTab) {
-      return ($scope.tab === checkTab);
-    };
+      $scope.toggleDelete = function () {
+        $scope.shouldShowDelete = !$scope.shouldShowDelete;
+        console.log($scope.shouldShowDelete);
+      };
 
-    $scope.toggleDetails = function () {
-      $scope.showDetails = !$scope.showDetails;
-    };
-  }])
+      $scope.deleteFavorite = function (index) {
+
+        var confirmPopup = $ionicPopup.confirm({
+          title: 'Confirm Delete',
+          template: 'Are you sure you want to delete this item'
+        });
+
+        confirmPopup.then(
+          function (res) {
+            if (res) {
+              console.log('Ok delete');
+              favoriteFactory.deleteFromFavorites(index);
+            } else {
+              console.log('Canceled delete')
+            }
+          }
+        );
+
+        $scope.shouldShowDelete = false;
+      };
+    }])
 
   .controller('ContactController', ['$scope', function ($scope) {
 
@@ -116,25 +205,81 @@ angular.module('conFusion.controllers', [])
     };
   }])
 
-  .controller('DishDetailController', ['$scope', '$stateParams', 'menuFactory', 'baseURL', function ($scope, $stateParams, menuFactory, baseURL) {
-    $scope.baseURL = baseURL;
-    $scope.dish = {};
-    $scope.showDish = false;
-    $scope.message = "Loading ...";
-
-    $scope.dish = menuFactory.getDishes().get({id: parseInt($stateParams.id, 10)})
-      .$promise.then(
-        function (response) {
-          $scope.dish = response;
-          $scope.showDish = true;
-        },
-        function (response) {
-          $scope.message = "Error: " + response.status + " " + response.statusText;
-        }
-      );
+  .controller('DishDetailController', ['$scope', '$stateParams', 'menuFactory', 'baseURL', '$ionicPopover',
+    'favoriteFactory', '$ionicModal',
+    function ($scope, $stateParams, menuFactory, baseURL, $ionicPopover, favoriteFactory, $ionicModal) {
+      $scope.baseURL = baseURL;
+      $scope.dish = {};
+      $scope.showDish = false;
+      $scope.message = "Loading ...";
+      $scope.comment = {};
 
 
-  }])
+      $scope.dish = menuFactory.getDishes().get({id: parseInt($stateParams.id, 10)})
+        .$promise.then(
+          function (response) {
+            $scope.dish = response;
+            $scope.showDish = true;
+          },
+          function (response) {
+            $scope.message = "Error: " + response.status + " " + response.statusText;
+          }
+        );
+
+
+      $ionicPopover.fromTemplateUrl('templates/dish-detail-popover.html', {
+        scope: $scope
+      }).then(function (popover) {
+        $scope.popover = popover;
+      });
+
+
+      $scope.openPopover = function ($event) {
+        $scope.popover.show($event);
+      };
+      $scope.closePopover = function () {
+        $scope.popover.hide();
+      };
+      //Cleanup the popover when we're done with it!
+      $scope.$on('$destroy', function () {
+        $scope.popover.remove();
+      });
+
+      $scope.addFavorite = function () {
+        favoriteFactory.addToFavorites($scope.dish.id);
+        $scope.popover.hide();
+      };
+
+      $ionicModal.fromTemplateUrl('templates/dish-comment.html', {
+        scope: $scope
+      }).then(function (modal) {
+        $scope.modal = modal;
+      });
+
+      // Triggered in the login modal to close it
+      $scope.closeComment = function () {
+        $scope.modal.hide();
+      };
+
+      // Open the login modal
+      $scope.addComment = function () {
+        $scope.modal.show();
+        $scope.closePopover();
+      };
+
+      $scope.doComment = function () {
+        console.log($scope.comment);
+
+        $scope.comment.date = new Date().toISOString();
+
+        $scope.dish.comments.push($scope.comment);
+
+        menuFactory.getDishes().update({id: $scope.dish.id}, $scope.dish);
+
+        $scope.comment = {rating: '', comment: "", author: "", date: ""};
+        $scope.closeComment();
+      };
+    }])
 
   .controller('DishCommentController', ['$scope', 'menuFactory', function ($scope, menuFactory) {
 
@@ -179,10 +324,22 @@ angular.module('conFusion.controllers', [])
   .controller('AboutController', ['$scope', 'corporateFactory', 'baseURL', function ($scope, corporateFactory, baseURL) {
 
     $scope.baseURL = baseURL;
-    
+
     $scope.leaders = corporateFactory.query();
     console.log($scope.leaders);
 
   }])
-
+  .filter('favoriteFilter', function () {
+    return function (dishes, favorites) {
+      var out = [];
+      for (var i = 0; i < favorites.length; i++) {
+        for (var j = 0; j < dishes.length; j++) {
+          if (dishes[j].id == favorites[i].id) {
+            out.push(dishes[j]);
+          }
+        }
+      }
+      return out;
+    }
+  })
 ;
